@@ -1,23 +1,20 @@
-// setup.go
 package models
 
 import (
-    "gorm.io/gorm"
-    "gorm.io/driver/mysql"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 var DB *gorm.DB
 
 func ConnectDatabase() {
-    database, err := gorm.Open(mysql.Open("root:Mikael8898@#@tcp(localhost:3306)/orders_by"), &gorm.Config{})
+    dsn := "root:Mikael8898@#@tcp(localhost:3306)/orders_by?parseTime=True"
+    database, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
     if err != nil {
-        panic(err)
+        panic("Failed to connect to database!")
     }
 
-    err = database.AutoMigrate(&Order{}, &Item{})
-    if err != nil {
-        panic(err)
-    }
+    database.AutoMigrate(&Order{}, &Item{})
 
     DB = database
 }
