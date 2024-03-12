@@ -52,43 +52,9 @@ func UpdateOrder(c *gin.Context) {
         return
     }
 
-    // Update existing items based on the request data
-    for i, requestItem := range updatedOrder.Items {
-        if i < len(existingOrder.Items) {
-            item := &existingOrder.Items[i]
-            item.ItemCode = requestItem.ItemCode
-            item.Description = requestItem.Description
-            item.Quantity = requestItem.Quantity
-            if err := models.DB.Save(item).Error; err != nil {
-                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-                return
-            }
-        } else {
-            // If there are new items in the request, create them
-            newItem := models.Item{
-                ItemCode:    requestItem.ItemCode,
-                Description: requestItem.Description,
-                Quantity:    requestItem.Quantity,
-                OrderID:     existingOrder.ID,
-            }
-            if err := models.DB.Create(&newItem).Error; err != nil {
-                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-                return
-            }
-            existingOrder.Items = append(existingOrder.Items, newItem)
-        }
-    }
-
-    // Remove any remaining items that were not updated
-    if len(updatedOrder.Items) < len(existingOrder.Items) {
-        for i := len(updatedOrder.Items); i < len(existingOrder.Items); i++ {
-            item := &existingOrder.Items[i]
-            if err := models.DB.Delete(item).Error; err != nil {
-                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-                return
-            }
-        }
-        existingOrder.Items = existingOrder.Items[:len(updatedOrder.Items)]
+    if err := updateOrderItems(&existingOrder, updatedOrder.Items); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
     }
 
     existingOrder.CustomerName = updatedOrder.CustomerName
@@ -128,4 +94,70 @@ func DeleteOrder(c *gin.Context) {
     }
 
     c.JSON(http.StatusOK, gin.H{"message": "Order deleted successfully"})
+}
+
+
+// Helper functions
+func updateOrderItems(order *models.Order, updatedItems []models.Item) error {
+    for i, requestItem := range updatedItems {
+        if i < len(order.Items) {
+            if err := updateItem(&order.Items[i], requestItem); err != nil {
+                return err
+            }
+        } else {
+            if err := createNewItem(order, requestItem); err != nil {
+                return err
+            }
+        }
+    }
+
+    if len(updatedItems) < len(order.Items) {
+        if err := deleteRemainingItems(order, updatedItems); err != nil {
+            return err
+        }
+    }
+
+    return nil
+}
+
+func updateItem(item *models.Item, updatedItem models.Item) error {
+    item.ItemCode = updatedItem.ItemCode
+    item.Description = updatedItem.Description
+    item.Quantity = updatedItem.Quantity
+
+    if err := models.DB.Save(item).Error; err != nil {
+        return err
+    }
+
+    return nil
+}
+
+func createNewItem(order *models.Order, requestItem models.Item) error {
+    newItem := models.Item{
+        ItemCode:    requestItem.ItemCode,
+        Description: requestItem.Description,
+        Quantity:    requestItem.Quantity,
+        OrderID:     order.ID,
+    }
+
+    if err := models.DB.Create(&newItem).Error; err != nil {
+        return err
+    }
+
+    order.Items = append(order.Items, newItem)
+
+    return nil
+}
+
+func deleteRemainingItems(order *models.Order, updatedItems []models.Item) error {
+    for i := len(updatedItems); i < len(order.Items); i++ {
+        item := &order.Items[i]
+        if err := models.DB.Delete(item).Error; err != nil {
+            return err
+        }
+    }
+
+    order.Items = order.Items[:len(updatedItems)]
+
+    return nil
 }
