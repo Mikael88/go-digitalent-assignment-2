@@ -25,7 +25,7 @@ func CreateOrder(c *gin.Context) {
 
 func GetOrders(c *gin.Context) {
     var orders []models.Order
-    if err := models.DB.Find(&orders).Error; err != nil {
+    if err := models.DB.Preload("Items").Find(&orders).Error; err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
