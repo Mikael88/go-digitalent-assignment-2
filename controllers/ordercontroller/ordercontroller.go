@@ -47,9 +47,48 @@ func UpdateOrder(c *gin.Context) {
     }
 
     var existingOrder models.Order
-    if err := models.DB.First(&existingOrder, orderId).Error; err != nil {
+    if err := models.DB.Preload("Items").First(&existingOrder, orderId).Error; err != nil {
         c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
         return
+    }
+
+    // Update existing items based on the request data
+    for i, requestItem := range updatedOrder.Items {
+        if i < len(existingOrder.Items) {
+            item := &existingOrder.Items[i]
+            item.ItemCode = requestItem.ItemCode
+            item.Description = requestItem.Description
+            item.Quantity = requestItem.Quantity
+            if err := models.DB.Save(item).Error; err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+                return
+            }
+        } else {
+            // If there are new items in the request, create them
+            newItem := models.Item{
+                ItemCode:    requestItem.ItemCode,
+                Description: requestItem.Description,
+                Quantity:    requestItem.Quantity,
+                OrderID:     existingOrder.ID,
+            }
+            if err := models.DB.Create(&newItem).Error; err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+                return
+            }
+            existingOrder.Items = append(existingOrder.Items, newItem)
+        }
+    }
+
+    // Remove any remaining items that were not updated
+    if len(updatedOrder.Items) < len(existingOrder.Items) {
+        for i := len(updatedOrder.Items); i < len(existingOrder.Items); i++ {
+            item := &existingOrder.Items[i]
+            if err := models.DB.Delete(item).Error; err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+                return
+            }
+        }
+        existingOrder.Items = existingOrder.Items[:len(updatedOrder.Items)]
     }
 
     existingOrder.CustomerName = updatedOrder.CustomerName
